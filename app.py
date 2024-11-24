@@ -7,8 +7,14 @@ import pickle
 from pathlib import Path
 import json
 
-# .env dosyasını yükle
-load_dotenv()
+# API anahtarını yükleme
+api_key = os.getenv("OPENAI_API_KEY")
+
+if not api_key:
+    raise ValueError("OPENAI_API_KEY bulunamadı! Secrets Manager'ı kontrol edin.")
+
+# OpenAI istemcisini başlatma
+openai.api_key = api_key
 
 # OpenAI API istemcisi
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
