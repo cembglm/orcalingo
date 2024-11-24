@@ -7,14 +7,14 @@ import pickle
 from pathlib import Path
 import json
 
-# API anahtarını doğrudan tanımlama (güvenliksiz)
-api_key = "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"
+# .env dosyasını yükle
+load_dotenv()
 
-if not api_key:
-    raise ValueError("API anahtarı tanımlı değil!")
+# OpenAI API istemcisi
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# OpenAI API anahtarını ayarla
-openai.api_key = api_key
+if not client.api_key:
+    st.error("OpenAI API anahtarı bulunamadı! Lütfen .env dosyasını doğru yapılandırın.")
 
 # Önbellekleme sistemi için dosya yolu
 CACHE_FILE = "cache.pkl"
