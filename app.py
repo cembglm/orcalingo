@@ -7,20 +7,13 @@ import pickle
 from pathlib import Path
 import json
 
-# API anahtarını yükleme
+# API anahtarını Secrets Manager'dan yükleme
 api_key = os.getenv("OPENAI_API_KEY")
-
 if not api_key:
     raise ValueError("OPENAI_API_KEY bulunamadı! Secrets Manager'ı kontrol edin.")
 
-# OpenAI istemcisini başlatma
+# OpenAI API anahtarını ayarla
 openai.api_key = api_key
-
-# OpenAI API istemcisi
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-if not client.api_key:
-    st.error("OpenAI API anahtarı bulunamadı! Lütfen .env dosyasını doğru yapılandırın.")
 
 # Önbellekleme sistemi için dosya yolu
 CACHE_FILE = "cache.pkl"
