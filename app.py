@@ -1,9 +1,11 @@
 import streamlit as st
 from openai import OpenAI
 from dotenv import load_dotenv
+import hashlib
 import os
+import pickle
 from pathlib import Path
-import requests
+import json
 
 # .env dosyasını yükle
 load_dotenv()
@@ -14,34 +16,53 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 if not client.api_key:
     st.error("OpenAI API anahtarı bulunamadı! Lütfen .env dosyasını doğru yapılandırın.")
 
-# Kelime ve gramer verileri
-kelime_verisi = {
-    "A1": ["hello", "world", "apple", "school", "friend"],
-    "A2": ["travel", "book", "restaurant", "family", "weekend"],
-    "B1": ["opportunity", "decision", "experience", "project", "future"],
-    "B2": ["analysis", "consequence", "perspective", "strategy", "negotiation"],
-    "C1": ["innovation", "collaboration", "philosophy", "leadership", "phenomenon"],
-    "C2": ["sustainability", "paradigm", "aesthetic", "existentialism", "dialectical"]
+# Önbellekleme sistemi için dosya yolu
+CACHE_FILE = "cache.pkl"
+
+# Önbelleği yükleme
+if Path(CACHE_FILE).exists():
+    with open(CACHE_FILE, "rb") as f:
+        cache = pickle.load(f)
+else:
+    cache = {}
+
+# Cache kontrol fonksiyonu
+def get_cache_key(*args):
+    """Generate a unique key based on function arguments."""
+    return hashlib.sha256(str(args).encode()).hexdigest()
+
+def save_to_cache(key, value):
+    """Save the result to the cache."""
+    cache[key] = value
+    with open(CACHE_FILE, "wb") as f:
+        pickle.dump(cache, f)
+
+def get_from_cache(key):
+    """Retrieve the result from the cache."""
+    return cache.get(key)
+
+# Dil bilgisi açıklamaları
+gramer_aciklamalari = {
+    "Temel Yapılar": {
+        "Simple Present": "Geniş zaman, alışkanlıkları ve genel doğruları ifade etmek için kullanılır.",
+        "Past Simple": "Geçmişte tamamlanmış olayları ifade etmek için kullanılır.",
+        "There is/are": "'Var' anlamını ifade eder ve yer/yokluk belirtir.",
+    },
+    "İleri Yapılar": {
+        "Present Continuous": "Şu anda gerçekleşen olayları ifade etmek için kullanılır.",
+        "Future Simple": "Gelecekte yapılacak eylemleri ifade eder ('will' ile).",
+        "Present Perfect": "Geçmişte olup etkisi devam eden olayları ifade eder.",
+    },
+    "Diğer Yapılar": {
+        "Passive Voice": "Eylemi yapan değil, eylemin yapıldığı kişi/nesne önemlidir.",
+        "Conditionals": "Şartlı cümlelerdir, bir olayın bir diğerine bağlı olduğunu belirtir.",
+        "Inversions": "Vurguyu artırmak için kullanılan cümle yapısı değişiklikleridir.",
+    },
 }
 
-gramer_verisi = {
-    "A1": ["Present Simple", "Past Simple", "There is/are"],
-    "A2": ["Present Continuous", "Future Simple", "Modal Verbs (can, must)"],
-    "B1": ["Present Perfect", "Past Continuous", "Conditionals (Type 1)"],
-    "B2": ["Passive Voice", "Conditionals (Type 2)", "Reported Speech"],
-    "C1": ["Advanced Passive Structures", "Mixed Conditionals", "Subjunctive Mood"],
-    "C2": ["Inversions", "Advanced Modals", "Cleft Sentences"]
-}
-
-konular = [
-    "Günlük Hayat", "Seyahat", "İş ve Kariyer", "Eğitim", "Sağlık",
-    "Doğa ve Çevre", "Bilim ve Teknoloji", "Sanat ve Kültür", "Tarih",
-    "Aile ve İlişkiler", "Spor", "Eğlence", "Politika", "Yemek Tarifleri"
-]
-
-# Streamlit Uygulaması
+# Kullanıcı arayüzü
 st.title("Dil Öğrenme Hikaye Uygulaması")
-st.markdown("Seçtiğiniz dil ve seviyeye uygun hikayeler oluşturun!")
+st.markdown("Seçtiğiniz seçeneklere göre hikayeler oluşturun!")
 
 # Dil ve Seviye Seçimi
 st.header("1. Dil ve Seviye Seçimi")
@@ -49,88 +70,208 @@ ana_dil = st.selectbox("Ana Dilinizi Seçin:", ["Türkçe", "İngilizce", "Alman
 ogrenilecek_dil = st.selectbox("Öğrenmek İstediğiniz Dili Seçin:", ["İngilizce", "Almanca", "Fransızca", "İspanyolca"])
 seviye = st.selectbox("Dil Seviyenizi Seçin:", ["A1", "A2", "B1", "B2", "C1", "C2"])
 
-# Konu Seçimi
-st.header("2. Hikaye Konusunu Seçin")
-secili_konu = st.selectbox("Hangi konuda bir hikaye oluşturmak istersiniz?", konular)
+# Zorluk Seviyesi
+st.header("2. Hikaye Hedef Çalışma Stili")
+zorluk_seviyesi = st.radio("Çalışma stilini seçin:", ["IELTS", "TOEFL", "Dil Sertifikası", "Günlük Kullanım"])
+
+# Hikaye Türü
+st.header("3. Hikaye Türü")
+hikaye_turu = st.selectbox("Hangi türde bir hikaye oluşturmak istersiniz?", ["Komedi", "Drama", "Bilim Kurgu", "Macera", "Korku", "Romantik"])
+
+# Gramer Seçimi ve Dil Bilgisi Açıklamaları
+st.header("4. Dil Bilgisi Açıklamaları")
+with st.expander("Gramer Açıklamaları"):
+    for kategori, aciklamalar in gramer_aciklamalari.items():
+        st.subheader(kategori)
+        for gramer, aciklama in aciklamalar.items():
+            st.markdown(f"**{gramer}:** {aciklama}")
+
+secilen_gramer = st.multiselect("Hangi gramer yapılarını dahil etmek istersiniz?", list(gramer_aciklamalari.keys()))
+
+# Karakter Özelleştirme
+st.header("5. Hikayede Bulunacak Karakterler")
+karakter_secenegi = st.radio(
+    "Karakter ekleme seçeneği",
+    ["Karakter ekle", "Karakter ekleme"],
+    horizontal=True,
+    label_visibility="hidden"
+)
+
+if karakter_secenegi == "Karakter ekle":
+    karakter_sayisi = st.number_input("Kaç karakter eklemek istersiniz?", min_value=1, max_value=10, step=1)
+    karakterler = []
+    for i in range(karakter_sayisi):
+        with st.expander(f"Karakter {i+1} Detayları"):
+            isim = st.text_input(f"Karakter {i+1} Adı:", key=f"isim_{i}")
+            rol = st.text_input(f"Karakter {i+1} Rolü (ör: baba, arkadaş):", key=f"rol_{i}")
+            meslek = st.text_input(f"Karakter {i+1} Mesleği (ör: doktor, öğretmen):", key=f"meslek_{i}")
+            karakterler.append({"isim": isim, "rol": rol, "meslek": meslek})
+else:
+    karakterler = []
 
 # Hikaye Uzunluğu Seçimi
-st.header("3. Hikaye Uzunluğu")
-hikaye_uzunlugu = st.selectbox("Hikaye uzunluğunu seçin:", ["Kısa", "Orta", "Uzun"])
+st.header("6. Hikaye Uzunluğu")
+options = ["Kısa (100 kelime)", "Orta (300 kelime)", "Uzun (500 kelime)"]
+hikaye_uzunlugu = st.pills("Hikaye uzunluğunu seçin:", options, selection_mode="single")
 
-# Kelime ve Gramer Gösterimi
-st.header("4. Kelime ve Gramer Yapıları")
-kelimeler = kelime_verisi[seviye]
-gramer_listesi = gramer_verisi[seviye]
+# Hikaye Uzunluğunu Prompt'a Dahil Etmek
+uzunluk_limitleri = {
+    "Kısa (100 kelime)": 100,
+    "Orta (300 kelime)": 300,
+    "Uzun (500 kelime)": 500
+}
 
-st.markdown(f"Seçilen seviye: {seviye}")
-st.write("Kelimeler: ", ", ".join(kelimeler))
-secilen_gramer = st.selectbox("Hikayede kullanılmasını istediğiniz gramer yapısını seçin:", gramer_listesi)
+# Kullanıcının seçim yapmadığı durumu kontrol et
+if not hikaye_uzunlugu:
+    st.warning("Lütfen bir hikaye uzunluğu seçin.")
+else:
+    # Hikaye Oluşturma
+    st.header("7. Hikaye Oluşturma")
+    if st.button("Hikaye Oluştur"):
+        with st.spinner("Hikaye oluşturuluyor, lütfen bekleyin..."):
+            try:
+                karakter_detaylari = ". ".join(
+                    [f"{k['isim']} is a {k['rol']} and works as a {k['meslek']}."
+                     for k in karakterler if k['isim']]
+                )
 
-# Hikaye Oluşturma
-st.header("5. Hikaye Oluşturma")
-if st.button("Hikaye Oluştur"):
-    with st.spinner("Hikaye oluşturuluyor, lütfen bekleyin..."):
+                # JSON formatında yanıt istemek için prompt düzenlemesi
+                prompt = {
+                    "instruction": f"""
+                    Create a story in {ogrenilecek_dil} for a learner at {seviye} level. 
+                    Include the following grammar structures: {', '.join(secilen_gramer)}.
+                    Make the story appropriate for {zorluk_seviyesi} preparation. 
+                    Include these characters: {karakter_detaylari}.
+                    Translate the story into {ana_dil}.
+                    Ensure the story is approximately {uzunluk_limitleri[hikaye_uzunlugu]} words.
+                    Provide the output in JSON format with the keys:
+                    - "original_story" for the story in {ogrenilecek_dil}.
+                    - "translated_story" for the story in {ana_dil}.
+                    """
+                }
+
+                # Cache kontrolü
+                cache_key = get_cache_key(json.dumps(prompt))
+                cached_response = get_from_cache(cache_key)
+                if cached_response:
+                    response_json = cached_response
+                else:
+                    response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": "You are a helpful assistant."},
+                            {"role": "user", "content": json.dumps(prompt)}
+                        ],
+                        max_tokens=1500,
+                        temperature=0.7
+                    )
+                    response_json = json.loads(response.choices[0].message.content)
+                    save_to_cache(cache_key, response_json)
+
+                st.session_state["story"] = response_json
+
+                # Hikaye Gösterimi (JSON'dan ayrıştırma)
+                with st.expander(f"Hikaye ({ogrenilecek_dil})"):
+                    st.write(response_json.get("original_story", "Hikaye alınamadı."))
+                with st.expander(f"Hikaye Çevirisi ({ana_dil})"):
+                    st.write(response_json.get("translated_story", "Çeviri alınamadı."))
+
+            except Exception as e:
+                st.error(f"Hata oluştu: {str(e)}")
+
+
+# Hikayedeki Önemli Kelimeler
+st.header("8. Hikayedeki Önemli Kelimeler")
+if "story" in st.session_state:
+    try:
+        # Prompt'u açık ve net bir şekilde yapılandırma
+        story_content = st.session_state["story"].get("original_story", "")
+        kelime_prompt = f"""
+        Extract 10 important words from the story below and translate them into {ana_dil}.
+        The output should be a JSON array of objects with two keys: 
+        - "word" (the important word in {ogrenilecek_dil})
+        - "translation" (the translation of the word in {ana_dil}).
+
+        Example Output:
+        [
+            {{"word": "apple", "translation": "elma"}},
+            {{"word": "book", "translation": "kitap"}}
+        ]
+
+        Story: {story_content}
+        """
+
+        kelime_response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that extracts words and provides translations."},
+                {"role": "user", "content": kelime_prompt}
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+
+        # Yanıtı kontrol et ve JSON'a dönüştür
+        raw_content = kelime_response.choices[0].message.content.strip()
+
         try:
-            # ChatCompletion için doğru prompt
-            prompt = f"""
-            Write a {hikaye_uzunlugu} story in {ogrenilecek_dil} for a {seviye} level learner about {secili_konu}.
-            Include the following vocabulary: {', '.join(kelimeler)}. Use the grammatical structure: {secilen_gramer}.
-            Provide a clear translation of the story in {ana_dil} ({ana_dil}). Ensure the translation is in {ana_dil}.
-            """
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that creates language learning stories."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=1000,
-                temperature=0.7
-            )
+            # Çift tırnaklar içinde JSON stringini gerçek JSON formatına dönüştür
+            if raw_content.startswith("```json"):
+                raw_content = raw_content.strip("```json").strip()
+            kelimeler_json = json.loads(raw_content)
+        except json.JSONDecodeError:
+            raise ValueError(f"Yanıt JSON formatında değil. Alınan yanıt: {raw_content}")
 
-            # Yanıtı işleme
-            story_parts = response.choices[0].message.content.split("\n\n")
-            giris = story_parts[0] if len(story_parts) > 0 else "Giriş bölümü bulunamadı."
-            gelisme = story_parts[1] if len(story_parts) > 1 else "Gelişme bölümü bulunamadı."
-            sonuc = story_parts[2] if len(story_parts) > 2 else "Sonuç bölümü bulunamadı."
+        # Kelimeleri ve çevirileri göster
+        st.subheader("Önemli Kelimeler ve Çevirileri")
+        for kelime in kelimeler_json:
+            yabanci_kelime = kelime.get("word", "Bilinmiyor")
+            ceviri = kelime.get("translation", "Bilinmiyor")
+            st.markdown(f"**{yabanci_kelime}**: {ceviri}")
 
-            # Çeviriler ve hikaye
-            col1, col2 = st.columns(2)
+    except Exception as e:
+        st.error(f"Hata oluştu: {str(e)}")
+else:
+    st.info("Önce bir hikaye oluşturmalısınız.")
 
-            with col1:
-                st.subheader(f"Hikaye ({ogrenilecek_dil})")
-                st.write(f"Giriş: {giris}")
-                st.write(f"Gelişme: {gelisme}")
-                st.write(f"Sonuç: {sonuc}")
+# Sesli Anlatım
+st.header("9. Sesli Anlatım")
+if "story" in st.session_state:
+    voice = st.selectbox("Ses Seçimi:", ["alloy", "echo", "fable", "onyx", "nova", "shimmer"])
+    if st.button("Sesli Anlatımı Başlat"):
+        with st.spinner("Sesli anlatım hazırlanıyor..."):
+            try:
+                speech_file_path = Path("hikaye.mp3")
+                speech_response = client.audio.speech.create(
+                    model="tts-1",
+                    voice=voice,
+                    input=st.session_state["story"]
+                )
+                speech_response.stream_to_file(speech_file_path)
+                st.audio(str(speech_file_path))
 
-            with col2:
-                st.subheader(f"Hikaye Çevirisi ({ana_dil})")
-                # Orijinal çeviri, Türkçe'ye odaklanarak düzeltilmiştir.
-                st.write(f"Giriş: {giris}")
-                st.write(f"Gelişme: {gelisme}")
-                st.write(f"Sonuç: {sonuc}")
+            except Exception as e:
+                st.error(f"Sesli anlatım oluşturulurken bir hata oluştu: {str(e)}")
+else:
+    st.info("Sesli anlatım için önce bir hikaye oluşturmalısınız.")
 
-            # # Sesli Anlatım
-            # speech_file_path = Path("hikaye.mp3")
-            # speech_response = client.audio.speech.create(
-            #     model="tts-1",
-            #     voice="alloy",
-            #     input=f"{giris} {gelisme} {sonuc}"
-            # )
-            # speech_response.stream_to_file(speech_file_path)
+# Görsel Oluşturma
+st.header("10. Görsel Oluşturma")
+if "story" in st.session_state:
+    if st.button("Hikaye için Görsel Oluştur"):
+        with st.spinner("Görsel oluşturuluyor..."):
+            try:
+                dall_e_response = client.images.generate(
+                    model="dall-e-3",
+                    prompt=f"{hikaye_turu} story illustration with {', '.join([k['isim'] for k in karakterler if k['isim']])}",
+                    size="1024x1024",
+                    quality="standard",
+                    n=1,
+                )
+                image_url = dall_e_response.data[0].url
+                st.image(image_url)
 
-            # st.audio(str(speech_file_path))
-
-            # # Görsel Oluşturma
-            # st.header("Hikaye için Görsel")
-            # dall_e_response = client.images.generate(
-            #     model="dall-e-3",
-            #     prompt=f"{secili_konu}, as a story illustration",
-            #     size="1024x1024",
-            #     quality="standard",
-            #     n=1,
-            # )
-            # image_url = dall_e_response.data[0].url
-            # st.image(image_url)
-
-        except Exception as e:
-            st.error(f"Hikaye oluşturulurken bir hata oluştu: {str(e)}")
+            except Exception as e:
+                st.error(f"Görsel oluşturulurken bir hata oluştu: {str(e)}")
+else:
+    st.info("Görsel oluşturmak için önce bir hikaye oluşturmalısınız.")
