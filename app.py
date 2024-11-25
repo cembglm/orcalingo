@@ -1,20 +1,17 @@
 import streamlit as st
 from openai import OpenAI
-from dotenv import load_dotenv
 import hashlib
 import os
 import pickle
 from pathlib import Path
 import json
 
-# .env dosyasını yükle
-load_dotenv()
-
 # OpenAI API istemcisi
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_api_key = st.secrets["OPENAI_API_KEY"]
+client = OpenAI(api_key=openai_api_key)
 
 if not client.api_key:
-    st.error("OpenAI API anahtarı bulunamadı! Lütfen .env dosyasını doğru yapılandırın.")
+    st.error("OpenAI API anahtarı bulunamadı! Lütfen secrets.toml dosyasını doğru yapılandırın.")
 
 # Önbellekleme sistemi için dosya yolu
 CACHE_FILE = "cache.pkl"
@@ -90,6 +87,7 @@ secilen_gramer = st.multiselect("Hangi gramer yapılarını dahil etmek istersin
 
 # Karakter Özelleştirme
 st.header("5. Hikayede Bulunacak Karakterler")
+st.write("Hikayenizde bulunacak karakterleri özelleştirin!")
 karakter_secenegi = st.radio(
     "Karakter ekleme seçeneği",
     ["Karakter ekle", "Karakter ekleme"],
@@ -109,8 +107,8 @@ if karakter_secenegi == "Karakter ekle":
 else:
     karakterler = []
 
-# Hikaye Uzunluğu Seçimi
-st.header("6. Hikaye Uzunluğu")
+# Hikaye Oluşturma
+st.header("6. Hikayemizi Oluşturalım")
 options = ["Kısa (100 kelime)", "Orta (300 kelime)", "Uzun (500 kelime)"]
 hikaye_uzunlugu = st.pills("Hikaye uzunluğunu seçin:", options, selection_mode="single")
 
@@ -118,21 +116,18 @@ hikaye_uzunlugu = st.pills("Hikaye uzunluğunu seçin:", options, selection_mode
 uzunluk_limitleri = {
     "Kısa (100 kelime)": 100,
     "Orta (300 kelime)": 300,
-    "Uzun (500 kelime)": 500
-}
+    "Uzun (500 kelime)": 500}
 
-# Kullanıcının seçim yapmadığı durumu kontrol et
-if not hikaye_uzunlugu:
-    st.warning("Lütfen bir hikaye uzunluğu seçin.")
-else:
-    # Hikaye Oluşturma
-    st.header("7. Hikaye Oluşturma")
-    if st.button("Hikaye Oluştur"):
+if st.button("Hikaye Oluştur"):
+    # Kullanıcının seçim yapmadığı durumu kontrol et
+    if not hikaye_uzunlugu:
+        st.warning("Lütfen bir hikaye uzunluğu seçin.")
+    else:
         with st.spinner("Hikaye oluşturuluyor, lütfen bekleyin..."):
             try:
                 karakter_detaylari = ". ".join(
                     [f"{k['isim']} is a {k['rol']} and works as a {k['meslek']}."
-                     for k in karakterler if k['isim']]
+                    for k in karakterler if k['isim']]
                 )
 
                 # JSON formatında yanıt istemek için prompt düzenlemesi
@@ -181,7 +176,7 @@ else:
 
 
 # Hikayedeki Önemli Kelimeler
-st.header("8. Hikayedeki Önemli Kelimeler")
+st.header("7. Hikayemizdeki Önemli Kelimeler ve Çevirileri")
 if "story" in st.session_state:
     try:
         # Prompt'u açık ve net bir şekilde yapılandırma
@@ -223,7 +218,6 @@ if "story" in st.session_state:
             raise ValueError(f"Yanıt JSON formatında değil. Alınan yanıt: {raw_content}")
 
         # Kelimeleri ve çevirileri göster
-        st.subheader("Önemli Kelimeler ve Çevirileri")
         for kelime in kelimeler_json:
             yabanci_kelime = kelime.get("word", "Bilinmiyor")
             ceviri = kelime.get("translation", "Bilinmiyor")
@@ -235,7 +229,7 @@ else:
     st.info("Önce bir hikaye oluşturmalısınız.")
 
 # Sesli Anlatım
-st.header("9. Sesli Anlatım")
+st.header("8. Hikayemizi Dinleyelim")
 if "story" in st.session_state:
     voice = st.selectbox("Ses Seçimi:", ["alloy", "echo", "fable", "onyx", "nova", "shimmer"])
     if st.button("Sesli Anlatımı Başlat"):
@@ -256,7 +250,7 @@ else:
     st.info("Sesli anlatım için önce bir hikaye oluşturmalısınız.")
 
 # Görsel Oluşturma
-st.header("10. Görsel Oluşturma")
+st.header("9. Hikayemizi Görelim")
 if "story" in st.session_state:
     if st.button("Hikaye için Görsel Oluştur"):
         with st.spinner("Görsel oluşturuluyor..."):

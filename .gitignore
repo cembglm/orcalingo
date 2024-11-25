@@ -1,3 +1,4 @@
 .env
 cache.pkl
 __pycache__/
+.streamlit/
